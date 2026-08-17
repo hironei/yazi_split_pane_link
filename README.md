@@ -25,3 +25,7 @@ desc = "Link selected item to the other pane"
 ```bash
 lua ./tests/test_main.lua
 ```
+
+## ライセンス
+
+MIT License。詳細は [`LICENSE`](LICENSE) を参照してください。
