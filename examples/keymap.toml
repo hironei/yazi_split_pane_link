@@ -1,0 +1,6 @@
+# Add this to %AppData%\yazi\config\keymap.toml or ~/.config/yazi/keymap.toml.
+
+[[mgr.prepend_keymap]]
+on = [ "g", "l" ]
+run = "plugin pane-link"
+desc = "Link selected item to the other pane"
