@@ -141,6 +141,10 @@ local get_link_targets = ya.sync(function()
 	return tostring(source_url), destination_dir, tostring(source_url.name), nil
 end)
 
+local get_active_tab_index = ya.sync(function()
+	return cx.tabs.idx, #cx.tabs
+end)
+
 local function inspect_source(source)
 	local cha, err = fs.cha(Url(source), true)
 	if not cha then
@@ -211,6 +215,8 @@ local function launch_link(source, destination, is_dir, target_os, sudo_path)
 					destination,
 					source,
 				}
+				:stdout(Command.NULL)
+				:stderr(Command.NULL)
 				:spawn()
 		end
 
@@ -221,6 +227,8 @@ local function launch_link(source, destination, is_dir, target_os, sudo_path)
 
 		return Command("cmd.exe")
 			:arg(args)
+			:stdout(Command.NULL)
+			:stderr(Command.NULL)
 			:spawn()
 	end
 
@@ -230,6 +238,8 @@ local function launch_link(source, destination, is_dir, target_os, sudo_path)
 			source,
 			destination,
 		}
+		:stdout(Command.NULL)
+		:stderr(Command.NULL)
 		:spawn()
 end
 
@@ -259,6 +269,18 @@ local function monitor_link(child, destination)
 	end
 
 	ya.emit("refresh", {})
+
+	-- "refresh"/"watch" only ever touch the active tab, so the destination
+	-- pane (when it isn't active) never sees the new link. Round-tripping
+	-- tab_switch is the only public way to reload another tab, since
+	-- tab_switch itself runs "refresh" on the tab it switches into.
+	local active_index, tab_count = get_active_tab_index()
+	if tab_count == 2 then
+		local other_index = active_index == 1 and 2 or 1
+		ya.emit("tab_switch", { other_index - 1 })
+		ya.emit("tab_switch", { active_index - 1 })
+	end
+
 	notify("info", messages.created .. destination)
 end
 
