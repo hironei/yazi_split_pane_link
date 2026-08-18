@@ -10,12 +10,44 @@ local sudo_exists = true
 local input_value = ""
 local input_event = 1
 local input_requests = {}
+local temp_dir_value = "C:\\Users\\test\\AppData\\Local\\Temp"
 local native_getenv = os.getenv
 os.getenv = function(name)
 	if name == "USERPROFILE" then
 		return "C:/Users/test"
 	end
+	if name == "TEMP" or name == "TMP" then
+		return temp_dir_value
+	end
 	return native_getenv(name)
+end
+
+local io_open_calls = {}
+local written_files = {}
+local io_open_result = { ok = true, err = nil }
+io.open = function(path, mode)
+	io_open_calls[#io_open_calls + 1] = { path = path, mode = mode }
+	if not io_open_result.ok then
+		return nil, io_open_result.err
+	end
+
+	local chunks = {}
+	local handle = {}
+	function handle:write(s)
+		chunks[#chunks + 1] = s
+		return true
+	end
+	function handle:close()
+		written_files[path] = table.concat(chunks)
+		return true
+	end
+	return handle
+end
+
+local removed_files = {}
+os.remove = function(path)
+	removed_files[#removed_files + 1] = path
+	return true
 end
 
 local function basename(path)
@@ -160,6 +192,11 @@ local function reset()
 	input_value = ""
 	input_event = 1
 	input_requests = {}
+	temp_dir_value = "C:\\Users\\test\\AppData\\Local\\Temp"
+	io_open_calls = {}
+	written_files = {}
+	io_open_result = { ok = true, err = nil }
+	removed_files = {}
 end
 
 local function run(tabs, active_index)
@@ -257,11 +294,21 @@ assert_equal(launched[1].args[3], expected_sudo, "sudo.cmd path")
 assert_equal(launched[1].args[4], "cmd.exe", "elevated command")
 assert_equal(launched[1].args[5], "/d", "elevated cmd echo mode")
 assert_equal(launched[1].args[6], "/c", "elevated cmd command mode")
-assert_equal(launched[1].args[7], "mklink", "mklink command")
-assert_equal(launched[1].args[8], [[C:/dest pane/file.txt]], "Windows file link path")
-assert_equal(launched[1].args[9], [[C:/work/left pane/file.txt]], "Windows file target path")
+local script_path = launched[1].args[7]
+assert(script_path:match("^C:/Users/test/AppData/Local/Temp/pane%-link%-%x+%.cmd$"), "temp script path shape: " .. tostring(script_path))
 assert_equal(launched[1].stdout, "null", "mklink stdout suppressed")
 assert_equal(launched[1].stderr, "null", "mklink stderr suppressed")
+
+-- The temp script contains the actual mklink call, with its own output
+-- suppressed so sudo.cmd's AttachConsole can't leak it into Yazi's console,
+-- and it is only a single argument, so sudo.cmd's own re-parsing of its
+-- arguments as one string can no longer split a path apart.
+local script_content = written_files[script_path]
+assert(script_content, "temp script was written")
+assert(script_content:find('mklink "C:/dest pane/file.txt" "C:/work/left pane/file.txt" >nul 2>&1', 1, true), "script runs mklink with quoted dest/source and suppressed output: " .. tostring(script_content))
+assert(script_content:find("@echo off", 1, true), "script disables command echo")
+assert(script_content:find("exit /b %errorlevel%", 1, true), "script propagates mklink's exit code")
+assert_equal(removed_files[1], script_path, "temp script cleaned up after the link command finishes")
 
 -- Windows file links fail before launch when Scoop sudo.cmd is unavailable.
 reset()
@@ -273,6 +320,29 @@ run({
 })
 assert_equal(#launched, 0, "missing sudo launch count")
 assert_notification("error", "sudo.cmd")
+assert_equal(#io_open_calls, 0, "no temp script is written when sudo.cmd is unavailable")
+
+-- Windows file links fail before launch when %TEMP%/%TMP% are unavailable.
+reset()
+target_os = "windows"
+temp_dir_value = nil
+run({
+	tab({}, file([[C:/work/left pane/file.txt]]), "/source"),
+	tab({}, file([[C:/work/right.txt]]), [[C:/dest pane]]),
+})
+assert_equal(#launched, 0, "missing temp dir launch count")
+assert_notification("error", "一時ディレクトリ")
+
+-- Windows file links fail before launch when the temp script can't be written.
+reset()
+target_os = "windows"
+io_open_result = { ok = false, err = "disk full" }
+run({
+	tab({}, file([[C:/work/left pane/file.txt]]), "/source"),
+	tab({}, file([[C:/work/right.txt]]), [[C:/dest pane]]),
+})
+assert_equal(#launched, 0, "temp script write failure launch count")
+assert_notification("error", "disk full")
 
 -- Windows folders use /J as requested; /H is never used.
 reset()
