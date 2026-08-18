@@ -18,7 +18,7 @@ run = "plugin pane-link"
 desc = "Link selected item to the other pane"
 ```
 
-アクティブ側のファイルまたはフォルダにカーソルを置き、`g` → `l` を押すと、反対側ペインの現在ディレクトリに同名リンクを作成します。Git BashのWindowsではファイルに `mklink`、フォルダに `mklink /J`、WSL/Linux/macOSでは `ln -s` を使います。詳細は [`pane-link.yazi/README.md`](pane-link.yazi/README.md) を参照してください。
+アクティブ側のファイルまたはフォルダにカーソルを置き、`g` → `l` を押すとリンク名の入力欄が表示されます。空欄のままEnterすると元のbasenameを維持し、名前を入力すると反対側ペインにその名前でリンクを作成します。Git BashのWindowsではファイルに `%USERPROFILE%\scoop\shims\sudo.cmd` 経由の `mklink`、フォルダに `mklink /J`、WSL/Linux/macOSでは `ln -s` を使います。詳細は [`pane-link.yazi/README.md`](pane-link.yazi/README.md) を参照してください。
 
 ## テスト
 

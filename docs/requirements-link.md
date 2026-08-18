@@ -9,15 +9,16 @@
 - プラグイン名は `pane-link.yazi` とする。
 - `split-tabs.yazi` が提供する2タブを、アクティブ側と反対側として利用する。
 - アクティブ側の対象は、明示選択が1件ならそのURL、選択がなければカーソル位置の項目とする。
+- リンク名は実行前に入力でき、空入力で対象URLのbasenameを使い、入力値があればそのbasenameを使う。
 - 対象は通常ファイルとフォルダ。コピーを作らず、同じ実体を参照するリンクだけを作成する。
-- Linux/WSL/macOSではファイル・フォルダとも `ln -s`、Windowsではファイルに `mklink`、フォルダに `mklink /J` を使う。Windowsの `/J` はディレクトリジャンクションだが、フォルダの二重保持を避けるために採用する。
-- リンク名は対象URLの basename、作成先は反対側タブの `current.cwd` とする。
+- Linux/WSL/macOSではファイル・フォルダとも `ln -s`、Windowsではファイルに `%USERPROFILE%\scoop\shims\sudo.cmd` 経由の `mklink`、フォルダに `mklink /J` を使う。Windowsの `/J` はディレクトリジャンクションだが、フォルダの二重保持を避けるために採用する。
+- リンク名は入力値、空入力時は対象URLの basename、作成先は反対側タブの `current.cwd` とする。
 - 作成はOSごとの外部コマンドに個別引数を渡して行い、ユーザー入力からコマンド文字列を組み立てない。
 
 ## 非機能要件
 
 - Yazi 26.5.6 以上を対象とする。
-- Git BashではWindowsの `mklink`、WSL/Linux/macOSでは `ln -s` を使う。
+- Git BashではWindowsの `mklink` と、ファイルリンク時だけScoopの `sudo.cmd`、WSL/Linux/macOSでは `ln -s` を使う。
 - パスに空白、日本語、括弧などが含まれても引数境界を壊さない。
 - 既存の destination を上書きしない。
 - 実行後にYaziの表示を更新し、作成結果を確認できるようにする。
@@ -31,21 +32,22 @@
 - アーカイブ内URLやリモートURLなど、リンクコマンドが扱えないURLは実行前に拒否する。
 - 対象が壊れたシンボリックリンク、特殊ファイル、またはファイルシステム情報を取得できない場合は実行しない。
 - 同名項目が destination に存在する場合は `ln` の失敗として通知し、削除・上書き・自動改名をしない。
+- リンク名のキャンセル、パス区切りを含む名前、Windowsで使用できない名前は作成しない。不正な名前は通知する。
 - リンクコマンドの起動失敗、終了状態取得失敗、非0終了は通知する。
 
 ## セキュリティ・互換性
 
-- Unix系は `Command("ln"):arg { "-s", source, destination }` の形式で渡す。Windowsは `mklink` がcmdの組み込みコマンドのため `Command("cmd.exe")` から固定の `mklink` だけを呼び出し、`/H` のハードリンクやコピー処理は行わない。フォルダの二重保持を避けるための `/J` だけを使用する。
+- Unix系は `Command("ln"):arg { "-s", source, destination }` の形式で渡す。Windowsは `mklink` がcmdの組み込みコマンドのため `Command("cmd.exe")` から固定の `mklink` だけを呼び出す。フォルダは通常の `mklink /J`、ファイルは `%USERPROFILE%\scoop\shims\sudo.cmd cmd.exe /d /c mklink` を経由してUAC昇格する。`/H` のハードリンクやコピー処理は行わない。
 - プラグインは既存ファイルを削除・上書きしない。sourceとdestinationは同じ実体を参照するため、片方での編集結果はもう片方にも反映される。
 - source はユーザーがYaziで選択したURLに限定し、任意のプラグイン引数からパスを受け取らない。
-- Windowsではシンボリックリンク作成権限またはDeveloper Modeが必要になる場合があり、これは実行環境の前提として文書化する。
+- Windowsのファイルリンクでは `%USERPROFILE%\scoop\shims\sudo.cmd` が必要で、実行時にUAC確認を表示する。Developer Modeは前提にしない。
 
 ## 受け入れ条件
 
-1. 2タブでファイルをカーソル選択して実行すると、反対側の現在ディレクトリに同名リンクが作成される。
+1. 2タブでファイルをカーソル選択して実行すると、リンク名入力後に反対側の現在ディレクトリへリンクが作成される。空入力では同名リンクになる。
 2. フォルダでも同じ動作になる。
-3. 明示選択1件はカーソル位置より優先され、アクティブタブを切り替えるとsource/destinationが反転する。
+3. 明示選択1件はカーソル位置より優先され、リンク名を変更でき、アクティブタブを切り替えるとsource/destinationが反転する。
 4. パスの空白・日本語・括弧を含むケースで、リンクコマンドに渡す引数が分割されない。
 5. 2件以上の選択、対象なし、2タブ以外、特殊ファイル・壊れたリンク、既存 destination ではリンクを作成せず通知する。
-6. Linux/WSL/macOSでは `ln -s`、Windowsではファイル `mklink` とフォルダ `mklink /J` が選ばれ、起動失敗と非0終了を通知する。
+6. Linux/WSL/macOSでは `ln -s`、Windowsではファイルが `sudo.cmd` 経由の `mklink`、フォルダが `mklink /J` として選ばれ、`sudo.cmd` の欠落、起動失敗、UACキャンセル、非0終了を通知する。
 7. Luaモックテストで上記の正常系・境界系・エラー系を再現できる。

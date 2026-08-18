@@ -17,7 +17,8 @@ pane-link.yazi/README.md -- user-facing setup and behavior
 2. `cx.tabs.idx` をアクティブタブとして、もう一方を destination タブとする。
 3. アクティブタブの `selected` が1件ならそのURLを使う。
 4. 選択が0件なら `current.hovered.url` を使う。2件以上はエラーにする。
-5. source URLの `name` と destination タブの `current.cwd` を使い、`current.cwd:join(name)` で destination URLを構成する。
+5. source URLの `name` と destination タブの `current.cwd` を取得する。
+6. `ya.input` でリンク名を受け取り、空入力ならsource URLの `name` を使い、入力値なら検証済みのbasenameとして `current.cwd:join(name)` でdestination URLを構成する。キャンセルや不正な名前では作成しない。
 
 物理的な画面の左右は推測しない。`split-tabs.yazi` と同じく、active tab / other tab の順だけを公開契約として扱う。
 
@@ -47,18 +48,28 @@ Command("cmd.exe")
   :spawn()
 ```
 
-ファイルの場合は `/J` を省略する。
+ファイルの場合は `%USERPROFILE%\scoop\shims\sudo.cmd` を経由して、次のようにUAC昇格する。
 
-実装では `nil` を配列要素に残さず、フォルダの場合だけ `/J` を追加する。`mklink` の引数順は `link target` なので、destinationを先に渡す。destinationの存在確認を先に行うと競合窓が増えるため、上書きしない各コマンドの失敗を正とする。終了成功時だけ `ya.emit("refresh", {})` を発行し、完了通知を表示する。起動失敗、wait失敗、非0終了は詳細を通知する。
+```
+Command("cmd.exe")
+  :arg {
+    "/d", "/c", sudo_path,
+    "cmd.exe", "/d", "/c", "mklink", destination, source,
+  }
+```
+
+`sudo.cmd` が存在しない場合は `mklink` を起動せず通知する。フォルダではUAC昇格を行わない。
+
+実装では `nil` を配列要素に残さず、フォルダの場合だけ `/J` を追加する。`mklink` の引数順は `link target` なので、destinationを先に渡す。destinationの存在確認を先に行うと競合窓が増えるため、上書きしない各コマンドの失敗を正とする。終了成功時だけ `ya.emit("refresh", {})` を発行し、完了通知を表示する。入力キャンセルは作成せず終了し、不正なリンク名、`sudo.cmd` の欠落、起動失敗、UACキャンセル、wait失敗、非0終了は通知する。
 
 ## テストシーム
 
 `tests/test_main.lua` は `ya.sync`、`ya.notify`、`ya.emit`、`fs.cha`、`Command`、`Child`、`Url` をモックする。以下を検証する。
 
-- ファイル・フォルダ、パス引数、選択優先、アクティブタブ反転、refresh
+- ファイル・フォルダ、空入力とリンク名変更、入力キャンセル、不正なリンク名、パス引数、選択優先、アクティブタブ反転、refresh
 - 2タブ以外、複数選択、対象なし、特殊ファイル、壊れたリンク、属性取得失敗
 - 既存 destination を含むリンクコマンドの起動エラー、waitエラー、非0終了
 
 ## 互換性と運用
 
-Yaziの公開Lua APIと `split-tabs.yazi` の2タブモデルだけに依存する。Git Bashでは `cmd.exe`/`mklink`、WSL/Linux/macOSでは `ln` の存在が実行環境の前提である。Windowsのシンボリックリンク権限またはジャンクション作成権限もREADMEに明記する。実Yazi UI、権限、実ファイルシステムのリンク作成はモックテストでは保証しない。
+Yaziの公開Lua APIと `split-tabs.yazi` の2タブモデルに加え、WindowsのファイルリンクではScoop `sudo.cmd` の存在が実行環境の前提である。Git Bashでは `cmd.exe`/`mklink`、WSL/Linux/macOSでは `ln` を使う。実Yazi UI、UAC確認、権限、実ファイルシステムのリンク作成はモックテストでは保証しない。

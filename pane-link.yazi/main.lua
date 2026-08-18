@@ -14,8 +14,10 @@ local messages = {
 	directory_unavailable = "リンク先ディレクトリを取得できませんでした。",
 	orphan = "壊れたシンボリックリンクはリンクできません。",
 	special_file = "通常ファイルまたはフォルダだけリンクできます。",
+	invalid_name = "リンク名にパス区切りや使用できない文字は指定できません。",
 	inspect_failed = "リンク対象を確認できませんでした: ",
 	process_unavailable = "リンク作成プロセスを開始できませんでした。",
+	sudo_unavailable = "ファイルリンクには %USERPROFILE%\\scoop\\shims\\sudo.cmd が必要です: ",
 	launch_failed = "リンク作成を起動できませんでした: ",
 	wait_failed = "リンク作成の実行状態を取得できませんでした: ",
 	process_failed = "リンクを作成できませんでした: 終了コード ",
@@ -109,7 +111,7 @@ end
 
 local get_link_targets = ya.sync(function()
 	if #cx.tabs ~= 2 then
-		return nil, nil, messages.wrong_tab_count
+		return nil, nil, nil, messages.wrong_tab_count
 	end
 
 	local active_index = cx.tabs.idx
@@ -118,25 +120,25 @@ local get_link_targets = ya.sync(function()
 	local other_tab = cx.tabs[other_index]
 
 	if not active_tab or not other_tab then
-		return nil, nil, messages.tab_unavailable
+		return nil, nil, nil, messages.tab_unavailable
 	end
 
 	local source_url, source_error = get_source_from_tab(active_tab)
 	if not source_url then
-		return nil, nil, source_error
+		return nil, nil, nil, source_error
 	end
 
 	local cwd = other_tab.current and other_tab.current.cwd
 	if not cwd then
-		return nil, nil, messages.directory_unavailable
+		return nil, nil, nil, messages.directory_unavailable
 	end
 
-	local destination_url = cwd:join(source_url.name)
-	if not destination_url then
-		return nil, nil, messages.directory_unavailable
+	local destination_dir = tostring(cwd)
+	if destination_dir == "" then
+		return nil, nil, nil, messages.directory_unavailable
 	end
 
-	return tostring(source_url), tostring(destination_url), nil
+	return tostring(source_url), destination_dir, tostring(source_url.name), nil
 end)
 
 local function inspect_source(source)
@@ -156,13 +158,64 @@ local function inspect_source(source)
 	return true, nil, cha.is_dir == true
 end
 
+local function get_sudo_path()
+	local user_profile = os.getenv("USERPROFILE")
+	if not user_profile or user_profile == "" then
+		return nil, messages.sudo_unavailable .. "USERPROFILE が設定されていません"
+	end
 
-local function launch_link(source, destination, is_dir, target_os)
+	local sudo_path = user_profile:gsub("\\", "/") .. "/scoop/shims/sudo.cmd"
+	local cha, err = fs.cha(Url(sudo_path), true)
+	if not cha or cha.is_dir then
+		return nil, messages.sudo_unavailable .. sudo_path .. (err and (" (" .. tostring(err) .. ")") or "")
+	end
+
+	return sudo_path, nil
+end
+
+local function validate_link_name(name, target_os)
+	if not name or name == "" then
+		return nil, messages.invalid_name
+	end
+
+	if name == "." or name == ".." or name:find("[/\\\\]") or name:find("%c") then
+		return nil, messages.invalid_name
+	end
+
 	if target_os == "windows" then
-		local args = { "/d", "/c", "mklink" }
-		if is_dir then
-			args[#args + 1] = "/J"
+		if name:find('[<>:"|?*]') then
+			return nil, messages.invalid_name
 		end
+
+		local last = name:sub(-1)
+		if last == "." or last == " " then
+			return nil, messages.invalid_name
+		end
+	end
+
+	return name, nil
+end
+
+local function launch_link(source, destination, is_dir, target_os, sudo_path)
+	if target_os == "windows" then
+		if not is_dir then
+			return Command("cmd.exe")
+				:arg {
+					"/d",
+					"/c",
+					sudo_path,
+					"cmd.exe",
+					"/d",
+					"/c",
+					"mklink",
+					destination,
+					source,
+				}
+				:spawn()
+		end
+
+		local args = { "/d", "/c", "mklink" }
+		args[#args + 1] = "/J"
 		args[#args + 1] = destination
 		args[#args + 1] = source
 
@@ -210,7 +263,7 @@ local function monitor_link(child, destination)
 end
 
 local function entry()
-	local source, destination, target_error = get_link_targets()
+	local source, destination_dir, source_name, target_error = get_link_targets()
 	if target_error then
 		notify("warn", target_error)
 		return
@@ -222,10 +275,48 @@ local function entry()
 		return
 	end
 
-	-- Unix paths are passed as separate arguments. Windows uses cmd.exe only
-	-- because mklink is a cmd builtin; the command name is fixed and paths are
-	-- still passed as separate arguments.
-	local ok, child, launch_error = pcall(launch_link, source, destination, is_dir, ya.target_os())
+	local target_os = ya.target_os()
+	local requested_name, input_event = ya.input {
+		title = "リンク名（空欄で " .. source_name .. "）:",
+		pos = { "top-center", y = 3, w = 50 },
+		value = "",
+	}
+	if input_event ~= 1 then
+		return
+	end
+
+	local link_name = requested_name
+	if not link_name or link_name == "" then
+		link_name = source_name
+	end
+
+	local valid_name, name_error = validate_link_name(link_name, target_os)
+	if not valid_name then
+		notify("warn", name_error)
+		return
+	end
+
+	local destination_url = Url(destination_dir):join(valid_name)
+	if not destination_url then
+		notify("warn", messages.directory_unavailable)
+		return
+	end
+	local destination = tostring(destination_url)
+
+	local sudo_path
+	if target_os == "windows" and not is_dir then
+		local sudo_error
+		sudo_path, sudo_error = get_sudo_path()
+		if not sudo_path then
+			notify("error", sudo_error)
+			return
+		end
+	end
+
+	-- Unix paths are passed as separate arguments. Windows folders use mklink
+	-- /J directly; files use the fixed Scoop sudo.cmd wrapper to elevate only
+	-- the mklink operation. The command and all paths remain separate args.
+	local ok, child, launch_error = pcall(launch_link, source, destination, is_dir, target_os, sudo_path)
 	if not ok then
 		notify("error", messages.launch_failed .. tostring(child))
 		return

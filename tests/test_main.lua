@@ -6,6 +6,17 @@ local launched = {}
 local spawn_result = {}
 local inspect_result = { cha = {}, err = nil }
 local target_os = "linux"
+local sudo_exists = true
+local input_value = ""
+local input_event = 1
+local input_requests = {}
+local native_getenv = os.getenv
+os.getenv = function(name)
+	if name == "USERPROFILE" then
+		return "C:/Users/test"
+	end
+	return native_getenv(name)
+end
 
 local function basename(path)
 	return path:match("[^/\\]+$")
@@ -22,6 +33,11 @@ local function url(path, opts)
 		__tostring = function(value)
 			return value.path
 		end,
+		__index = {
+			join = function(value, name)
+				return url(value.path .. "/" .. name)
+			end,
+		},
 	})
 end
 
@@ -30,11 +46,11 @@ function Url(path)
 end
 
 local function cwd(path)
-	return {
-		join = function(_, name)
-			return url(path .. "/" .. name)
-		end,
-	}
+	local value = url(path)
+	function value:join(name)
+		return url(self.path .. "/" .. name)
+	end
+	return value
 end
 
 local successful_child = {}
@@ -49,6 +65,10 @@ ya = {
 	notify = function(notification)
 		notifications[#notifications + 1] = notification
 	end,
+	input = function(options)
+		input_requests[#input_requests + 1] = options
+		return input_value, input_event
+	end,
 	target_os = function()
 		return target_os
 	end,
@@ -58,7 +78,15 @@ ya = {
 }
 
 fs = {
-	cha = function()
+	cha = function(path)
+		if tostring(path):lower():match("[/\\\\]scoop[/\\\\]shims[/\\\\]sudo%.cmd$") then
+			if not sudo_exists then
+				return nil, "not found"
+			end
+
+			return { is_dir = false }, nil
+		end
+
 		return inspect_result.cha, inspect_result.err
 	end,
 }
@@ -114,6 +142,10 @@ local function reset()
 	spawn_result = { child = successful_child, err = nil }
 	inspect_result = { cha = {}, err = nil }
 	target_os = "linux"
+	sudo_exists = true
+	input_value = ""
+	input_event = 1
+	input_requests = {}
 end
 
 local function run(tabs, active_index)
@@ -149,6 +181,36 @@ assert_equal(launched[1].args[2], [[C:/work/left pane/左 (1).txt]], "source pat
 assert_equal(launched[1].args[3], [[/dest pane/反対/左 (1).txt]], "destination path")
 assert_equal(emitted[1].action, "refresh", "refresh action")
 assert_equal(notifications[1].level, "info", "success notification")
+assert_equal(input_requests[1].value, "", "empty link name input")
+
+-- A custom link name is used for the destination only.
+reset()
+input_value = "renamed.txt"
+run({
+	tab({}, file([[C:/work/source.txt]]), "/source"),
+	tab({}, file([[C:/work/other.txt]]), "/dest"),
+})
+assert_equal(launched[1].args[3], [[/dest/renamed.txt]], "custom destination name")
+
+-- Canceling the name prompt does not launch a link command.
+reset()
+input_event = 2
+run({
+	tab({}, file([[C:/work/source.txt]]), "/source"),
+	tab({}, file([[C:/work/other.txt]]), "/dest"),
+})
+assert_equal(#launched, 0, "cancel launch count")
+assert_equal(#notifications, 0, "cancel notification count")
+
+-- A name must remain a single safe basename.
+reset()
+input_value = "nested/renamed.txt"
+run({
+	tab({}, file([[C:/work/source.txt]]), "/source"),
+	tab({}, file([[C:/work/other.txt]]), "/dest"),
+})
+assert_equal(#launched, 0, "invalid name launch count")
+assert_notification("warn", "リンク名")
 
 -- macOS follows the same Unix symlink path as Linux/WSL.
 reset()
@@ -160,7 +222,7 @@ run({
 assert_equal(launched[1].program, "ln", "macOS program")
 assert_equal(launched[1].args[1], "-s", "macOS symlink option")
 
--- Windows uses cmd.exe for the mklink builtin; files use symbolic links.
+-- Windows file links use Scoop sudo.cmd to elevate only the mklink operation.
 reset()
 target_os = "windows"
 run({
@@ -170,9 +232,25 @@ run({
 assert_equal(launched[1].program, "cmd.exe", "Windows program")
 assert_equal(launched[1].args[1], "/d", "cmd echo mode")
 assert_equal(launched[1].args[2], "/c", "cmd command mode")
-assert_equal(launched[1].args[3], "mklink", "mklink command")
-assert_equal(launched[1].args[4], [[C:/dest pane/file.txt]], "Windows file link path")
-assert_equal(launched[1].args[5], [[C:/work/left pane/file.txt]], "Windows file target path")
+local expected_sudo = "C:/Users/test/scoop/shims/sudo.cmd"
+assert_equal(launched[1].args[3], expected_sudo, "sudo.cmd path")
+assert_equal(launched[1].args[4], "cmd.exe", "elevated command")
+assert_equal(launched[1].args[5], "/d", "elevated cmd echo mode")
+assert_equal(launched[1].args[6], "/c", "elevated cmd command mode")
+assert_equal(launched[1].args[7], "mklink", "mklink command")
+assert_equal(launched[1].args[8], [[C:/dest pane/file.txt]], "Windows file link path")
+assert_equal(launched[1].args[9], [[C:/work/left pane/file.txt]], "Windows file target path")
+
+-- Windows file links fail before launch when Scoop sudo.cmd is unavailable.
+reset()
+target_os = "windows"
+sudo_exists = false
+run({
+	tab({}, file([[C:/work/left pane/file.txt]]), "/source"),
+	tab({}, file([[C:/work/right.txt]]), [[C:/dest pane]]),
+})
+assert_equal(#launched, 0, "missing sudo launch count")
+assert_notification("error", "sudo.cmd")
 
 -- Windows folders use /J as requested; /H is never used.
 reset()
