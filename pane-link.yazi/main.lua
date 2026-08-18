@@ -18,6 +18,8 @@ local messages = {
 	inspect_failed = "リンク対象を確認できませんでした: ",
 	process_unavailable = "リンク作成プロセスを開始できませんでした。",
 	sudo_unavailable = "ファイルリンクには %USERPROFILE%\\scoop\\shims\\sudo.cmd が必要です: ",
+	temp_dir_unavailable = "一時ディレクトリ（%TEMP%）を取得できませんでした。",
+	temp_script_failed = "リンク作成用の一時スクリプトを作成できませんでした: ",
 	launch_failed = "リンク作成を起動できませんでした: ",
 	wait_failed = "リンク作成の実行状態を取得できませんでした: ",
 	process_failed = "リンクを作成できませんでした: 終了コード ",
@@ -177,6 +179,39 @@ local function get_sudo_path()
 	return sudo_path, nil
 end
 
+-- Scoop's sudo.cmd elevates by re-joining its arguments into one string and
+-- re-parsing that string across two nested PowerShell processes. That chain
+-- has been observed to corrupt a plain "mklink dest source" argument list
+-- (e.g. splitting "C:\Users\..." into a stray "/Users" switch for mklink).
+-- Writing the mklink call to a temp script and passing only that single
+-- path through sudo.cmd avoids the multi-hop re-parsing entirely, and lets
+-- us suppress mklink's own console output at the source (mklink's success
+-- message otherwise reaches Yazi's console via sudo.cmd's AttachConsole,
+-- bypassing this plugin's own stdout/stderr redirection).
+local function get_temp_script_path()
+	local temp_dir = os.getenv("TEMP") or os.getenv("TMP")
+	if not temp_dir or temp_dir == "" then
+		return nil, messages.temp_dir_unavailable
+	end
+
+	local unique = string.format("%x%x%x", os.time(), math.floor(os.clock() * 1000), math.random(0, 0xffffff))
+	return temp_dir:gsub("\\", "/") .. "/pane-link-" .. unique .. ".cmd", nil
+end
+
+local function write_link_script(path, destination, source)
+	local file, err = io.open(path, "w")
+	if not file then
+		return nil, err
+	end
+
+	file:write('@echo off\r\n')
+	file:write('mklink "' .. destination .. '" "' .. source .. '" >nul 2>&1\r\n')
+	file:write('exit /b %errorlevel%\r\n')
+	file:close()
+
+	return true, nil
+end
+
 local function validate_link_name(name, target_os)
 	if not name or name == "" then
 		return nil, messages.invalid_name
@@ -200,7 +235,7 @@ local function validate_link_name(name, target_os)
 	return name, nil
 end
 
-local function launch_link(source, destination, is_dir, target_os, sudo_path)
+local function launch_link(source, destination, is_dir, target_os, sudo_path, script_path)
 	if target_os == "windows" then
 		if not is_dir then
 			return Command("cmd.exe")
@@ -211,9 +246,7 @@ local function launch_link(source, destination, is_dir, target_os, sudo_path)
 					"cmd.exe",
 					"/d",
 					"/c",
-					"mklink",
-					destination,
-					source,
+					script_path,
 				}
 				:stdout(Command.NULL)
 				:stderr(Command.NULL)
@@ -243,10 +276,14 @@ local function launch_link(source, destination, is_dir, target_os, sudo_path)
 		:spawn()
 end
 
-local function monitor_link(child, destination)
+local function monitor_link(child, destination, script_path)
 	local ok, status, wait_error = pcall(function()
 		return child:wait()
 	end)
+
+	if script_path then
+		os.remove(script_path)
+	end
 
 	if not ok then
 		notify("error", messages.wait_failed .. tostring(status))
@@ -325,7 +362,7 @@ local function entry()
 	end
 	local destination = tostring(destination_url)
 
-	local sudo_path
+	local sudo_path, script_path
 	if target_os == "windows" and not is_dir then
 		local sudo_error
 		sudo_path, sudo_error = get_sudo_path()
@@ -333,28 +370,50 @@ local function entry()
 			notify("error", sudo_error)
 			return
 		end
+
+		local script_error
+		script_path, script_error = get_temp_script_path()
+		if not script_path then
+			notify("error", script_error)
+			return
+		end
+
+		local written, write_error = write_link_script(script_path, destination, source)
+		if not written then
+			notify("error", messages.temp_script_failed .. tostring(write_error))
+			return
+		end
 	end
 
 	-- Unix paths are passed as separate arguments. Windows folders use mklink
-	-- /J directly; files use the fixed Scoop sudo.cmd wrapper to elevate only
-	-- the mklink operation. The command and all paths remain separate args.
-	local ok, child, launch_error = pcall(launch_link, source, destination, is_dir, target_os, sudo_path)
+	-- /J directly; files run a generated temp script through the fixed Scoop
+	-- sudo.cmd wrapper to elevate only the mklink operation.
+	local ok, child, launch_error = pcall(launch_link, source, destination, is_dir, target_os, sudo_path, script_path)
 	if not ok then
 		notify("error", messages.launch_failed .. tostring(child))
+		if script_path then
+			os.remove(script_path)
+		end
 		return
 	end
 
 	if launch_error then
 		notify("error", messages.launch_failed .. tostring(launch_error))
+		if script_path then
+			os.remove(script_path)
+		end
 		return
 	end
 
 	if not child then
 		notify("error", messages.process_unavailable)
+		if script_path then
+			os.remove(script_path)
+		end
 		return
 	end
 
-	monitor_link(child, destination)
+	monitor_link(child, destination, script_path)
 end
 
 return {

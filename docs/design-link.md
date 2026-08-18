@@ -48,21 +48,31 @@ Command("cmd.exe")
   :spawn()
 ```
 
-ファイルの場合は `%USERPROFILE%\scoop\shims\sudo.cmd` を経由して、次のようにUAC昇格する。
+ファイルの場合は `%USERPROFILE%\scoop\shims\sudo.cmd` を経由して、次のようにUAC昇格する。destinationとsourceを直接引数として渡さず、`mklink` 呼び出しを書いた一時 `.cmd` スクリプトを`%TEMP%`（`%TMP%`）に生成し、そのスクリプトパス1つだけをsudo.cmdに渡す。
 
 ```
 Command("cmd.exe")
   :arg {
     "/d", "/c", sudo_path,
-    "cmd.exe", "/d", "/c", "mklink", destination, source,
+    "cmd.exe", "/d", "/c", script_path,
   }
 ```
 
-`sudo.cmd` が存在しない場合は `mklink` を起動せず通知する。フォルダではUAC昇格を行わない。
+一時スクリプトの内容は次の形（destination/sourceは常にダブルクォートで囲む）。
 
-実装では `nil` を配列要素に残さず、フォルダの場合だけ `/J` を追加する。`mklink` の引数順は `link target` なので、destinationを先に渡す。destinationの存在確認を先に行うと競合窓が増えるため、上書きしない各コマンドの失敗を正とする。入力キャンセルは作成せず終了し、不正なリンク名、`sudo.cmd` の欠落、起動失敗、UACキャンセル、wait失敗、非0終了は通知する。
+```
+@echo off
+mklink "destination" "source" >nul 2>&1
+exit /b %errorlevel%
+```
 
-`ln`/`mklink` の `Command` にはそれぞれ `:stdout(Command.NULL):stderr(Command.NULL)` を指定する。指定しないとWindowsでは子プロセスの標準出力（`mklink` の完了メッセージ等）がYaziの端末画面バッファへ直接書き込まれ、TUIの描画と重なって残像として残る。
+一時スクリプト経由にしているのは、Scoopの`sudo.cmd`（gsudo系ツール）が引数を1本の文字列に再結合し、その文字列を昇格プロセス・PowerShellをまたいで複数回再パースする実装だからである。実機検証で、`mklink destination source` を素の引数リストとしてsudo.cmd経由に渡すと、Windowsパス（例: `C:\Users\...`）の一部が `mklink` に対する不正なスイッチ（例: `/Users`）として解釈され、リンクが作成されないままYaziには成功と表示される事象を確認した。渡す引数を一時スクリプトのパス1つに減らすことで、この多段再パースに起因する破損の余地をなくしている。加えて、`mklink` 自身の標準出力をスクリプト内で `>nul 2>&1` により明示的に抑制する。sudo.cmd（gsudo系ツール）は昇格後のプロセスをWin32の `AttachConsole` で元のコンソールへ直接アタッチし直すため、`Command:stdout(Command.NULL):stderr(Command.NULL)`（後述）だけでは`mklink`自身の出力を抑止できない。
+
+`sudo.cmd` が存在しない、`%TEMP%`/`%TMP%` が取得できない、一時スクリプトの書き込みに失敗した場合は `mklink` を起動せず通知する。一時スクリプトは `child:wait()` 完了後（成功・失敗を問わず）に `os.remove` で削除する。フォルダではUAC昇格も一時スクリプトも使わない。
+
+実装では `nil` を配列要素に残さず、フォルダの場合だけ `/J` を追加する。`mklink` の引数順は `link target` なので、destinationを先に渡す。destinationの存在確認を先に行うと競合窓が増えるため、上書きしない各コマンドの失敗を正とする。入力キャンセルは作成せず終了し、不正なリンク名、`sudo.cmd` の欠落、一時スクリプトの作成失敗、起動失敗、UACキャンセル、wait失敗、非0終了は通知する。
+
+`ln`/`mklink`（フォルダの`/J`）の `Command` にはそれぞれ `:stdout(Command.NULL):stderr(Command.NULL)` を指定する。指定しないとWindowsでは子プロセスの標準出力（`mklink` の完了メッセージ等）がYaziの端末画面バッファへ直接書き込まれ、TUIの描画と重なって残像として残る。ファイルリンク（sudo.cmd経由）の場合はこれに加えて上記の一時スクリプト内の出力抑制が必要になる。
 
 終了成功時は `ya.emit("refresh", {})` を発行したうえで、`ya.emit("tab_switch", { other_index })` → `ya.emit("tab_switch", { active_index })` の順で発行し、完了通知を表示する。YaziのMgrコマンド（`refresh`/`watch`）は常にアクティブタブだけを対象にし、ファイルシステム監視によるリアクティブな `update_files` も非アクティブタブへは配信されない。そのため、反対側ペイン（非アクティブタブ）が作成直後のリンクを表示するには、`tab_switch` がその内部で対象タブに対して `refresh` を実行する仕組みを利用し、反対側タブへ一旦切り替えてから元のアクティブタブへ戻す。タブ数が2以外（作成待機中にタブが増減した場合）はこの往復をスキップし、アクティブタブの `refresh` のみ行う。選択状態・カーソル・各タブの `current.cwd` は `tab_switch` によって変化しない。
 
@@ -71,6 +81,7 @@ Command("cmd.exe")
 `tests/test_main.lua` は `ya.sync`、`ya.notify`、`ya.emit`、`fs.cha`、`Command`、`Child`、`Url` をモックする。以下を検証する。
 
 - ファイル・フォルダ、空入力とリンク名変更、入力キャンセル、不正なリンク名、パス引数、選択優先、アクティブタブ反転、refresh、反対側ペインを更新するtab_switch往復、コマンドのstdout/stderr抑制
+- ファイルリンクの一時スクリプト生成内容（`mklink`呼び出し・出力抑制・exitコード伝搬）と実行後の削除、`%TEMP%`/`%TMP%`未取得時と書き込み失敗時の通知
 - 2タブ以外、複数選択、対象なし、特殊ファイル、壊れたリンク、属性取得失敗
 - 既存 destination を含むリンクコマンドの起動エラー、waitエラー、非0終了
 

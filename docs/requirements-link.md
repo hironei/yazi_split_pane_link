@@ -35,10 +35,11 @@
 - 同名項目が destination に存在する場合は `ln` の失敗として通知し、削除・上書き・自動改名をしない。
 - リンク名のキャンセル、パス区切りを含む名前、Windowsで使用できない名前は作成しない。不正な名前は通知する。
 - リンクコマンドの起動失敗、終了状態取得失敗、非0終了は通知する。
+- ファイルリンクで `%TEMP%`/`%TMP%` が取得できない、または一時スクリプトの書き込みに失敗した場合は実行しない。
 
 ## セキュリティ・互換性
 
-- Unix系は `Command("ln"):arg { "-s", source, destination }` の形式で渡す。Windowsは `mklink` がcmdの組み込みコマンドのため `Command("cmd.exe")` から固定の `mklink` だけを呼び出す。フォルダは通常の `mklink /J`、ファイルは `%USERPROFILE%\scoop\shims\sudo.cmd cmd.exe /d /c mklink` を経由してUAC昇格する。`/H` のハードリンクやコピー処理は行わない。
+- Unix系は `Command("ln"):arg { "-s", source, destination }` の形式で渡す。Windowsは `mklink` がcmdの組み込みコマンドのため `Command("cmd.exe")` から固定の `mklink` だけを呼び出す。フォルダは通常の `mklink /J`、ファイルは一時 `.cmd` スクリプトに書いた `mklink` 呼び出しを `%USERPROFILE%\scoop\shims\sudo.cmd cmd.exe /d /c` 経由でUAC昇格して実行する。`/H` のハードリンクやコピー処理は行わない。Scoopの`sudo.cmd`は引数を1本の文字列へ再結合・再パースする実装であるため、destination/sourceを直接引数として渡さず一時スクリプトのパス1つに集約し、多段再パースによるパス破損（例: `C:\Users\...` の一部が `mklink` への不正なスイッチと誤認識される）を避ける。
 - プラグインは既存ファイルを削除・上書きしない。sourceとdestinationは同じ実体を参照するため、片方での編集結果はもう片方にも反映される。
 - source はユーザーがYaziで選択したURLに限定し、任意のプラグイン引数からパスを受け取らない。
 - Windowsのファイルリンクでは `%USERPROFILE%\scoop\shims\sudo.cmd` が必要で、実行時にUAC確認を表示する。Developer Modeは前提にしない。
@@ -50,5 +51,5 @@
 3. 明示選択1件はカーソル位置より優先され、リンク名を変更でき、アクティブタブを切り替えるとsource/destinationが反転する。
 4. パスの空白・日本語・括弧を含むケースで、リンクコマンドに渡す引数が分割されない。
 5. 2件以上の選択、対象なし、2タブ以外、特殊ファイル・壊れたリンク、既存 destination ではリンクを作成せず通知する。
-6. Linux/WSL/macOSでは `ln -s`、Windowsではファイルが `sudo.cmd` 経由の `mklink`、フォルダが `mklink /J` として選ばれ、`sudo.cmd` の欠落、起動失敗、UACキャンセル、非0終了を通知する。
+6. Linux/WSL/macOSでは `ln -s`、Windowsではファイルが一時スクリプト経由・`sudo.cmd` 経由の `mklink`、フォルダが `mklink /J` として選ばれ、`sudo.cmd` の欠落、一時スクリプトの書き込み失敗、起動失敗、UACキャンセル、非0終了を通知する。
 7. Luaモックテストで上記の正常系・境界系・エラー系を再現できる。
