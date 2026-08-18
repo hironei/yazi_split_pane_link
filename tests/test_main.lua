@@ -97,17 +97,31 @@ function command:arg(args)
 	return self
 end
 
+function command:stdout(mode)
+	self.stdout_mode = mode
+	return self
+end
+
+function command:stderr(mode)
+	self.stderr_mode = mode
+	return self
+end
+
 function command:spawn()
 	launched[#launched + 1] = {
 		program = self.program,
 		args = self.args,
+		stdout = self.stdout_mode,
+		stderr = self.stderr_mode,
 	}
 	return spawn_result.child, spawn_result.err
 end
 
-function Command(program)
-	return setmetatable({ program = program }, { __index = command })
-end
+Command = setmetatable({ NULL = "null", PIPED = "piped", INHERIT = "inherit" }, {
+	__call = function(_, program)
+		return setmetatable({ program = program }, { __index = command })
+	end,
+})
 
 local plugin = assert(loadfile(source))()
 
@@ -179,7 +193,13 @@ assert_equal(launched[1].program, "ln", "program")
 assert_equal(launched[1].args[1], "-s", "symlink option")
 assert_equal(launched[1].args[2], [[C:/work/left pane/左 (1).txt]], "source path")
 assert_equal(launched[1].args[3], [[/dest pane/反対/左 (1).txt]], "destination path")
+assert_equal(launched[1].stdout, "null", "ln stdout suppressed")
+assert_equal(launched[1].stderr, "null", "ln stderr suppressed")
 assert_equal(emitted[1].action, "refresh", "refresh action")
+assert_equal(emitted[2].action, "tab_switch", "switch to other pane to refresh it")
+assert_equal(emitted[2].args[1], 1, "other pane tab_switch index")
+assert_equal(emitted[3].action, "tab_switch", "switch back to the original active pane")
+assert_equal(emitted[3].args[1], 0, "original pane tab_switch index")
 assert_equal(notifications[1].level, "info", "success notification")
 assert_equal(input_requests[1].value, "", "empty link name input")
 
@@ -240,6 +260,8 @@ assert_equal(launched[1].args[6], "/c", "elevated cmd command mode")
 assert_equal(launched[1].args[7], "mklink", "mklink command")
 assert_equal(launched[1].args[8], [[C:/dest pane/file.txt]], "Windows file link path")
 assert_equal(launched[1].args[9], [[C:/work/left pane/file.txt]], "Windows file target path")
+assert_equal(launched[1].stdout, "null", "mklink stdout suppressed")
+assert_equal(launched[1].stderr, "null", "mklink stderr suppressed")
 
 -- Windows file links fail before launch when Scoop sudo.cmd is unavailable.
 reset()
@@ -283,6 +305,10 @@ run({
 }, 2)
 assert_equal(launched[1].args[2], [[C:/second.txt]], "reversed source path")
 assert_equal(launched[1].args[3], [[/first/second.txt]], "reversed destination path")
+assert_equal(emitted[2].action, "tab_switch", "reversed switch to other pane to refresh it")
+assert_equal(emitted[2].args[1], 0, "reversed other pane tab_switch index")
+assert_equal(emitted[3].action, "tab_switch", "reversed switch back to the original active pane")
+assert_equal(emitted[3].args[1], 1, "reversed original pane tab_switch index")
 
 -- Invalid target states do not launch a process.
 reset()

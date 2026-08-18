@@ -60,13 +60,17 @@ Command("cmd.exe")
 
 `sudo.cmd` が存在しない場合は `mklink` を起動せず通知する。フォルダではUAC昇格を行わない。
 
-実装では `nil` を配列要素に残さず、フォルダの場合だけ `/J` を追加する。`mklink` の引数順は `link target` なので、destinationを先に渡す。destinationの存在確認を先に行うと競合窓が増えるため、上書きしない各コマンドの失敗を正とする。終了成功時だけ `ya.emit("refresh", {})` を発行し、完了通知を表示する。入力キャンセルは作成せず終了し、不正なリンク名、`sudo.cmd` の欠落、起動失敗、UACキャンセル、wait失敗、非0終了は通知する。
+実装では `nil` を配列要素に残さず、フォルダの場合だけ `/J` を追加する。`mklink` の引数順は `link target` なので、destinationを先に渡す。destinationの存在確認を先に行うと競合窓が増えるため、上書きしない各コマンドの失敗を正とする。入力キャンセルは作成せず終了し、不正なリンク名、`sudo.cmd` の欠落、起動失敗、UACキャンセル、wait失敗、非0終了は通知する。
+
+`ln`/`mklink` の `Command` にはそれぞれ `:stdout(Command.NULL):stderr(Command.NULL)` を指定する。指定しないとWindowsでは子プロセスの標準出力（`mklink` の完了メッセージ等）がYaziの端末画面バッファへ直接書き込まれ、TUIの描画と重なって残像として残る。
+
+終了成功時は `ya.emit("refresh", {})` を発行したうえで、`ya.emit("tab_switch", { other_index })` → `ya.emit("tab_switch", { active_index })` の順で発行し、完了通知を表示する。YaziのMgrコマンド（`refresh`/`watch`）は常にアクティブタブだけを対象にし、ファイルシステム監視によるリアクティブな `update_files` も非アクティブタブへは配信されない。そのため、反対側ペイン（非アクティブタブ）が作成直後のリンクを表示するには、`tab_switch` がその内部で対象タブに対して `refresh` を実行する仕組みを利用し、反対側タブへ一旦切り替えてから元のアクティブタブへ戻す。タブ数が2以外（作成待機中にタブが増減した場合）はこの往復をスキップし、アクティブタブの `refresh` のみ行う。選択状態・カーソル・各タブの `current.cwd` は `tab_switch` によって変化しない。
 
 ## テストシーム
 
 `tests/test_main.lua` は `ya.sync`、`ya.notify`、`ya.emit`、`fs.cha`、`Command`、`Child`、`Url` をモックする。以下を検証する。
 
-- ファイル・フォルダ、空入力とリンク名変更、入力キャンセル、不正なリンク名、パス引数、選択優先、アクティブタブ反転、refresh
+- ファイル・フォルダ、空入力とリンク名変更、入力キャンセル、不正なリンク名、パス引数、選択優先、アクティブタブ反転、refresh、反対側ペインを更新するtab_switch往復、コマンドのstdout/stderr抑制
 - 2タブ以外、複数選択、対象なし、特殊ファイル、壊れたリンク、属性取得失敗
 - 既存 destination を含むリンクコマンドの起動エラー、waitエラー、非0終了
 
