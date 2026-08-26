@@ -267,7 +267,7 @@ run({
 	tab({}, file([[C:/work/other.txt]]), "/dest"),
 })
 assert_equal(#launched, 0, "invalid name launch count")
-assert_notification("warn", "リンク名")
+assert_notification("warn", "link name")
 
 -- macOS follows the same Unix symlink path as Linux/WSL.
 reset()
@@ -331,7 +331,7 @@ run({
 	tab({}, file([[C:/work/right.txt]]), [[C:/dest pane]]),
 })
 assert_equal(#launched, 0, "missing temp dir launch count")
-assert_notification("error", "一時ディレクトリ")
+assert_notification("error", "temporary directory")
 
 -- Windows file links fail before launch when the temp script can't be written.
 reset()
@@ -383,47 +383,47 @@ assert_equal(emitted[3].args[1], 1, "reversed original pane tab_switch index")
 -- Invalid target states do not launch a process.
 reset()
 run({ tab({ url([[C:/one.txt]]), url([[C:/two.txt]]) }, file([[C:/left.txt]]), "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_no_link("アクティブペインの選択ファイルは1つ")
+assert_no_link("Select exactly one item")
 
 reset()
 run({ tab({}, nil, "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_no_link("アクティブペインにリンク対象がありません")
+assert_no_link("No link target")
 
 reset()
 run({ tab({}, file([[C:/left.txt]]), "/target") })
-assert_no_link("リンク作成には2つのタブが必要です")
+assert_no_link("Link creation requires exactly two tabs")
 
 reset()
 run({ tab({}, file([[C:/device]] , { is_block = true }), "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_no_link("通常ファイルまたはフォルダだけ")
+assert_no_link("Only regular files and folders")
 
 reset()
 run({ tab({}, file([[C:/broken.link]], { is_orphan = true }), "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_no_link("壊れたシンボリックリンク")
+assert_no_link("Broken symbolic links")
 
 reset()
 run({ tab({}, file([[sftp://server/file]], { domain = "server" }), "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_no_link("ローカルファイルシステム")
+assert_no_link("local filesystem")
 
 reset()
 run({ tab({}, file([[C:/archive.zip/file]], { is_archive = true }), "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_no_link("アーカイブ内")
+assert_no_link("inside archives")
 
 -- File inspection errors and broken/special filesystem entries are rejected.
 reset()
 inspect_result = { cha = nil, err = "not found" }
 run({ tab({}, file([[C:/missing.txt]]), "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_no_link("リンク対象を確認できませんでした: not found")
+assert_no_link("Could not inspect the link target: not found")
 
 reset()
 inspect_result.cha = { is_orphan = true }
 run({ tab({}, file([[C:/broken.link]]), "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_no_link("壊れたシンボリックリンク")
+assert_no_link("Broken symbolic links")
 
 reset()
 inspect_result.cha = { is_sock = true }
 run({ tab({}, file([[C:/socket]]), "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_no_link("通常ファイルまたはフォルダだけ")
+assert_no_link("Only regular files and folders")
 
 -- Process-start errors, wait errors, and non-zero exit statuses are notified.
 reset()
@@ -447,6 +447,6 @@ function failed_child:wait()
 end
 spawn_result = { child = failed_child, err = nil }
 run({ tab({}, file([[C:/left.txt]]), "/target"), tab({}, file([[C:/right.txt]]), "/other") })
-assert_notification("error", "終了コード 17")
+assert_notification("error", "exit code 17")
 
 print("pane-link.yazi tests passed")

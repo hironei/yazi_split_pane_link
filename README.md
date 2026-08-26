@@ -1,31 +1,31 @@
 # Yazi Split Pane Link Plugin
 
-Yaziの `terrakok/split-tabs.yazi` で表示した2ペイン間に、アクティブ側のファイルまたはフォルダのリンクを作成する `pane-link.yazi` プラグインです。コピーを作らず同じ実体を参照するため、片方の編集結果はもう片方にも反映されます。
+pane-link.yazi is a Yazi plugin that creates a link to the active file or folder in the other pane displayed by terrakok/split-tabs.yazi. It does not copy data: both panes refer to the same underlying item, so edits made from either pane are visible from the other.
 
-## インストール
+## Installation
 
-```bash
+~~~bash
 ya pkg add terrakok/split-tabs
 ya pkg add hironei/yazi_split_pane_link:pane-link
-```
+~~~
 
-## 設定
+## Configuration
 
-```toml
+~~~toml
 [[mgr.prepend_keymap]]
 on = [ "g", "l" ]
 run = "plugin pane-link"
 desc = "Link selected item to the other pane"
-```
+~~~
 
-アクティブ側のファイルまたはフォルダにカーソルを置き、`g` → `l` を押すとリンク名の入力欄が表示されます。空欄のままEnterすると元のbasenameを維持し、名前を入力すると反対側ペインにその名前でリンクを作成します。Git BashのWindowsではファイルに `%USERPROFILE%\scoop\shims\sudo.cmd` 経由の `mklink`、フォルダに `mklink /J`、WSL/Linux/macOSでは `ln -s` を使います。詳細は [`pane-link.yazi/README.md`](pane-link.yazi/README.md) を参照してください。
+Place the cursor on a file or folder in the active pane and press g then l to open the link-name prompt. Pressing Enter with an empty name keeps the original basename; entering a name creates the link with that name in the other pane. On Git Bash for Windows, files use mklink through %USERPROFILE%\scoop\shims\sudo.cmd, folders use mklink /J, and WSL/Linux/macOS use ln -s. See [pane-link.yazi/README.md](pane-link.yazi/README.md) for details.
 
-## テスト
+## Tests
 
-```bash
+~~~bash
 lua ./tests/test_main.lua
-```
+~~~
 
-## ライセンス
+## License
 
-MIT License。詳細は [`LICENSE`](LICENSE) を参照してください。
+MIT License. See [LICENSE](LICENSE) for details.
