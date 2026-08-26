@@ -3,27 +3,27 @@
 local messages = {
 	title = "Pane link",
 	wrong_tab_count =
-		"リンク作成には2つのタブが必要です。split-tabsを有効にしてください。",
-	missing_target = "アクティブペインにリンク対象がありません。",
-	multiple_selection = "アクティブペインの選択ファイルは1つにしてください。",
-	tab_unavailable = "リンク先のタブを取得できませんでした。",
-	selected_unavailable = "リンク対象を取得できませんでした。",
-	remote_target = "ローカルファイルシステムの項目だけリンクできます。",
-	archive_target = "アーカイブ内の項目はリンクできません。",
-	name_unavailable = "リンク対象の名前を取得できませんでした。",
-	directory_unavailable = "リンク先ディレクトリを取得できませんでした。",
-	orphan = "壊れたシンボリックリンクはリンクできません。",
-	special_file = "通常ファイルまたはフォルダだけリンクできます。",
-	invalid_name = "リンク名にパス区切りや使用できない文字は指定できません。",
-	inspect_failed = "リンク対象を確認できませんでした: ",
-	process_unavailable = "リンク作成プロセスを開始できませんでした。",
-	sudo_unavailable = "ファイルリンクには %USERPROFILE%\\scoop\\shims\\sudo.cmd が必要です: ",
-	temp_dir_unavailable = "一時ディレクトリ（%TEMP%）を取得できませんでした。",
-	temp_script_failed = "リンク作成用の一時スクリプトを作成できませんでした: ",
-	launch_failed = "リンク作成を起動できませんでした: ",
-	wait_failed = "リンク作成の実行状態を取得できませんでした: ",
-	process_failed = "リンクを作成できませんでした: 終了コード ",
-	created = "リンクを作成しました: ",
+		"Link creation requires exactly two tabs. Enable split-tabs.",
+	missing_target = "No link target is available in the active pane.",
+	multiple_selection = "Select exactly one item in the active pane.",
+	tab_unavailable = "Could not access the other tab.",
+	selected_unavailable = "Could not access the link target.",
+	remote_target = "Only local filesystem items can be linked.",
+	archive_target = "Items inside archives cannot be linked.",
+	name_unavailable = "Could not determine the link target name.",
+	directory_unavailable = "Could not determine the destination directory.",
+	orphan = "Broken symbolic links cannot be linked.",
+	special_file = "Only regular files and folders can be linked.",
+	invalid_name = "The link name must be a single valid basename.",
+	inspect_failed = "Could not inspect the link target: ",
+	process_unavailable = "Could not start the link creation process.",
+	sudo_unavailable = "File links require %USERPROFILE%\\scoop\\shims\\sudo.cmd: ",
+	temp_dir_unavailable = "Could not determine the temporary directory (%TEMP%).",
+	temp_script_failed = "Could not create the temporary link script: ",
+	launch_failed = "Could not start link creation: ",
+	wait_failed = "Could not determine the link creation status: ",
+	process_failed = "Could not create the link: exit code ",
+	created = "Link created: ",
 }
 
 local function notify(level, content)
@@ -167,7 +167,7 @@ end
 local function get_sudo_path()
 	local user_profile = os.getenv("USERPROFILE")
 	if not user_profile or user_profile == "" then
-		return nil, messages.sudo_unavailable .. "USERPROFILE が設定されていません"
+		return nil, messages.sudo_unavailable .. "USERPROFILE is not set"
 	end
 
 	local sudo_path = user_profile:gsub("\\", "/") .. "/scoop/shims/sudo.cmd"
@@ -296,7 +296,7 @@ local function monitor_link(child, destination, script_path)
 	end
 
 	if not status then
-		notify("error", messages.wait_failed .. "状態が返されませんでした")
+		notify("error", messages.wait_failed .. "no status was returned")
 		return
 	end
 
@@ -336,7 +336,7 @@ local function entry()
 
 	local target_os = ya.target_os()
 	local requested_name, input_event = ya.input {
-		title = "リンク名（空欄で " .. source_name .. "）:",
+		title = "Link name (leave empty for " .. source_name .. "):",
 		pos = { "top-center", y = 3, w = 50 },
 		value = "",
 	}

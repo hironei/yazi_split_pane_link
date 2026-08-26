@@ -1,55 +1,55 @@
-# split-pane-link 要件
+# split-pane-link Requirements
 
-## 目的
+## Purpose
 
-`terrakok/split-tabs.yazi` で表示している2ペイン間で、アクティブ側のファイルまたはフォルダを、反対側ペインの現在ディレクトリへ同名のシンボリックリンクとして作成する。
+Create a symbolic link for the active file or folder in the other pane displayed by terrakok/split-tabs.yazi. The link is created in the other pane's current directory and refers to the same underlying item rather than copying it.
 
-## スコープ
+## Scope
 
-- プラグイン名は `pane-link.yazi` とする。
-- `split-tabs.yazi` が提供する2タブを、アクティブ側と反対側として利用する。
-- アクティブ側の対象は、明示選択が1件ならそのURL、選択がなければカーソル位置の項目とする。
-- リンク名は実行前に入力でき、空入力で対象URLのbasenameを使い、入力値があればそのbasenameを使う。
-- 対象は通常ファイルとフォルダ。コピーを作らず、同じ実体を参照するリンクだけを作成する。
-- Linux/WSL/macOSではファイル・フォルダとも `ln -s`、Windowsではファイルに `%USERPROFILE%\scoop\shims\sudo.cmd` 経由の `mklink`、フォルダに `mklink /J` を使う。Windowsの `/J` はディレクトリジャンクションだが、フォルダの二重保持を避けるために採用する。
-- リンク名は入力値、空入力時は対象URLの basename、作成先は反対側タブの `current.cwd` とする。
-- 作成はOSごとの外部コマンドに個別引数を渡して行い、ユーザー入力からコマンド文字列を組み立てない。
+- The plugin name is pane-link.yazi.
+- Use the two tabs provided by split-tabs.yazi as the active and other panes.
+- If exactly one item is explicitly selected in the active pane, use that URL; otherwise use the item under the cursor.
+- Accept a link name before execution. An empty input uses the basename of the target URL; a non-empty input uses the entered basename.
+- Support regular files and folders. Create links that refer to the same underlying item; never copy the item.
+- On Linux/WSL/macOS, use ln -s for both files and folders. On Windows, use mklink through %USERPROFILE%\scoop\shims\sudo.cmd for files and mklink /J for folders. Use /J for folders to avoid maintaining a second copy.
+- Use the entered link name, or the target URL basename when the input is empty. Create the destination under the other tab's current.cwd.
+- Invoke OS-specific external commands with individual arguments. Never build a command string from user input.
 
-## 非機能要件
+## Non-functional requirements
 
-- Yazi 26.5.6 以上を対象とする。
-- Git BashではWindowsの `mklink` と、ファイルリンク時だけScoopの `sudo.cmd`、WSL/Linux/macOSでは `ln -s` を使う。
-- パスに空白、日本語、括弧などが含まれても引数境界を壊さない。
-- 既存の destination を上書きしない。
-- 実行後にYaziの表示を更新し、作成結果をアクティブ側・反対側の両ペインで確認できるようにする。
-- 選択状態、カーソル、各タブの現在ディレクトリは変更しない。
-- リンク作成コマンドの標準出力・標準エラー出力を、Yaziの端末画面へ漏らさない。
+- Target Yazi 26.5.6 or later.
+- On Git Bash, use Windows mklink and Scoop sudo.cmd only for file links. On WSL/Linux/macOS, use ln -s.
+- Preserve argument boundaries for paths containing spaces, Japanese characters, parentheses, or other special characters.
+- Do not overwrite an existing destination item.
+- Refresh Yazi after execution so the result can be confirmed in both panes.
+- Do not change selection state, cursor position, or either tab's current directory.
+- Do not leak link-command stdout or stderr into Yazi's terminal screen.
 
-## エラー・境界条件
+## Errors and boundary conditions
 
-- タブ数が2でなければ実行しない。
-- 明示選択が2件以上なら実行しない。
-- 対象がない、basenameを取得できない、反対側の現在ディレクトリを取得できない場合は実行しない。
-- アーカイブ内URLやリモートURLなど、リンクコマンドが扱えないURLは実行前に拒否する。
-- 対象が壊れたシンボリックリンク、特殊ファイル、またはファイルシステム情報を取得できない場合は実行しない。
-- 同名項目が destination に存在する場合は `ln` の失敗として通知し、削除・上書き・自動改名をしない。
-- リンク名のキャンセル、パス区切りを含む名前、Windowsで使用できない名前は作成しない。不正な名前は通知する。
-- リンクコマンドの起動失敗、終了状態取得失敗、非0終了は通知する。
-- ファイルリンクで `%TEMP%`/`%TMP%` が取得できない、または一時スクリプトの書き込みに失敗した場合は実行しない。
+- Do not execute when the tab count is not two.
+- Do not execute when more than one item is explicitly selected.
+- Do not execute when there is no target, the basename cannot be obtained, or the other pane's current directory cannot be obtained.
+- Reject archive URLs, remote URLs, and other URLs that the link command cannot handle before execution.
+- Reject broken symbolic links, special files, and targets whose filesystem metadata cannot be obtained.
+- If an item with the same name exists at the destination, notify the ln/mklink failure without deleting, overwriting, or automatically renaming anything.
+- Do not create a link when the name prompt is canceled, the name contains path separators, or the name is invalid on Windows. Notify invalid names.
+- Notify command-start failures, failures to obtain the exit status, and non-zero exit codes.
+- For Windows file links, do not execute when %TEMP%/%TMP% cannot be obtained or when the temporary script cannot be written.
 
-## セキュリティ・互換性
+## Security and compatibility
 
-- Unix系は `Command("ln"):arg { "-s", source, destination }` の形式で渡す。Windowsは `mklink` がcmdの組み込みコマンドのため `Command("cmd.exe")` から固定の `mklink` だけを呼び出す。フォルダは通常の `mklink /J`、ファイルは一時 `.cmd` スクリプトに書いた `mklink` 呼び出しを `%USERPROFILE%\scoop\shims\sudo.cmd cmd.exe /d /c` 経由でUAC昇格して実行する。`/H` のハードリンクやコピー処理は行わない。Scoopの`sudo.cmd`は引数を1本の文字列へ再結合・再パースする実装であるため、destination/sourceを直接引数として渡さず一時スクリプトのパス1つに集約し、多段再パースによるパス破損（例: `C:\Users\...` の一部が `mklink` への不正なスイッチと誤認識される）を避ける。
-- プラグインは既存ファイルを削除・上書きしない。sourceとdestinationは同じ実体を参照するため、片方での編集結果はもう片方にも反映される。
-- source はユーザーがYaziで選択したURLに限定し、任意のプラグイン引数からパスを受け取らない。
-- Windowsのファイルリンクでは `%USERPROFILE%\scoop\shims\sudo.cmd` が必要で、実行時にUAC確認を表示する。Developer Modeは前提にしない。
+- On Unix-like systems, pass arguments as Command("ln"):arg { "-s", source, destination }. On Windows, call only the fixed mklink command from Command("cmd.exe"), because mklink is a cmd built-in. Use regular mklink /J for folders. For files, write the mklink call to a temporary .cmd script and run it elevated through %USERPROFILE%\scoop\shims\sudo.cmd cmd.exe /d /c. Do not use hard links (/H) or copy operations. Scoop sudo.cmd rejoins and reparses its arguments as one string, so do not pass destination/source directly; pass one temporary script path to avoid path corruption during multi-stage parsing.
+- The plugin never deletes or overwrites existing files. Source and destination refer to the same underlying item, so edits made through either path are visible through the other.
+- Limit the source to the URL selected in Yazi. Do not accept paths from arbitrary plugin arguments.
+- Windows file links require %USERPROFILE%\scoop\shims\sudo.cmd and may display a UAC prompt. Developer Mode is not a prerequisite.
 
-## 受け入れ条件
+## Acceptance criteria
 
-1. 2タブでファイルをカーソル選択して実行すると、リンク名入力後に反対側の現在ディレクトリへリンクが作成される。空入力では同名リンクになる。作成後、アクティブ側・反対側どちらのペインにも作成結果が表示され、リンク作成コマンドの出力がYaziの画面に残らない。
-2. フォルダでも同じ動作になる。
-3. 明示選択1件はカーソル位置より優先され、リンク名を変更でき、アクティブタブを切り替えるとsource/destinationが反転する。
-4. パスの空白・日本語・括弧を含むケースで、リンクコマンドに渡す引数が分割されない。
-5. 2件以上の選択、対象なし、2タブ以外、特殊ファイル・壊れたリンク、既存 destination ではリンクを作成せず通知する。
-6. Linux/WSL/macOSでは `ln -s`、Windowsではファイルが一時スクリプト経由・`sudo.cmd` 経由の `mklink`、フォルダが `mklink /J` として選ばれ、`sudo.cmd` の欠落、一時スクリプトの書き込み失敗、起動失敗、UACキャンセル、非0終了を通知する。
-7. Luaモックテストで上記の正常系・境界系・エラー系を再現できる。
+1. With two tabs and a file under the cursor, execution opens the link-name prompt and creates a link in the other pane's current directory. Empty input creates a link with the original basename. Both panes show the result after creation, and command output does not remain on the Yazi screen.
+2. Folders behave the same way.
+3. One explicit selection takes priority over the cursor, the link name can be changed, and switching the active tab reverses source and destination.
+4. Paths containing spaces, Japanese characters, and parentheses remain intact as command arguments.
+5. More than one selected item, no target, a tab count other than two, special files, broken links, and an existing destination do not create a link and produce a notification.
+6. Linux/WSL/macOS select ln -s. Windows selects a temporary-script and sudo.cmd based mklink path for files and mklink /J for folders. Missing sudo.cmd, temporary-script write failures, command-start failures, UAC cancellation, and non-zero exits produce notifications.
+7. The Lua mock test reproduces the normal, boundary, and error cases above.

@@ -1,86 +1,86 @@
 # pane-link.yazi
 
-`terrakok/split-tabs.yazi` の2ペイン間で、アクティブ側のファイルまたはフォルダを、反対側の現在ディレクトリへ指定した名前のリンクとして作成するYaziプラグインです。コピーは作らないため、片方で編集した内容は同じ実体を参照するもう片方にも反映されます。
+pane-link.yazi is a Yazi plugin that creates a link from a file or folder in the active pane to the other pane's current directory. It does not copy data, so edits made from either pane are visible through the link.
 
-## 依存関係
+## Dependencies
 
-| 依存関係 | 条件 |
+| Dependency | Requirement |
 | --- | --- |
-| 対象環境 | Git Bash / WSL / Linux / macOS |
-| Yazi / `ya` | 26.5.6 以上、同じバージョン |
-| `terrakok/split-tabs.yazi` | 2ペイン表示に必須 |
-| リンクコマンド | Git Bashでは `cmd.exe` の `mklink`、Unix系では `ln` |
-| Windowsのファイルリンク | `%USERPROFILE%\scoop\shims\sudo.cmd` が必要 |
+| Target environment | Git Bash / WSL / Linux / macOS |
+| Yazi / ya | 26.5.6 or later, using the same version |
+| terrakok/split-tabs.yazi | Required for the two-pane view |
+| Link command | cmd.exe mklink on Git Bash; ln on Unix-like systems |
+| Windows file links | %USERPROFILE%\scoop\shims\sudo.cmd is required |
 
-Git Bash（Windows）ではフォルダに `mklink /J` を直接使い、ファイルには `%USERPROFILE%\scoop\shims\sudo.cmd cmd.exe /d /c mklink` を使ってリンク作成操作だけをUAC昇格します。Developer Modeは使用しません。`sudo.cmd` がない場合、ファイルリンクは実行前にエラーになります。WSL/Linux/macOSではファイル・フォルダとも `ln -s` を使います。
+On Git Bash for Windows, folders use mklink /J directly. Files use %USERPROFILE%\scoop\shims\sudo.cmd cmd.exe /d /c mklink so that only the link-creation operation is elevated through UAC. Developer Mode is not used. If sudo.cmd is unavailable, file links fail before execution. On WSL/Linux/macOS, both files and folders use ln -s.
 
-## インストール
+## Installation
 
-まず `split-tabs.yazi` を導入します。
+Install split-tabs.yazi first:
 
-```bash
+~~~bash
 ya pkg add terrakok/split-tabs
-```
+~~~
 
-次にこのプラグインを導入します。
+Then install this plugin:
 
-```bash
+~~~bash
 ya pkg add hironei/yazi_split_pane_link:pane-link
-```
+~~~
 
-更新・削除は次のコマンドです。
+Use the following commands to update or remove packages:
 
-```bash
+~~~bash
 ya pkg upgrade
 ya pkg delete hironei/yazi_split_pane_link:pane-link
-```
+~~~
 
-`ya pkg` はYaziのパッケージ管理情報を更新します。monorepoのサブディレクトリ指定は `owner/repository:subdirectory` 形式です。
+ya pkg updates Yazi's package metadata. Monorepo subdirectory syntax is owner/repository:subdirectory.
 
-## キーマップ
+## Keymap
 
-Yaziを実行する環境の `keymap.toml` に追加します。
+Add the following to the keymap.toml used by Yazi:
 
-```toml
+~~~toml
 [[mgr.prepend_keymap]]
 on = [ "g", "l" ]
 run = "plugin pane-link"
 desc = "Link selected item to the other pane"
-```
+~~~
 
-設定例は [`examples/keymap.toml`](../examples/keymap.toml) にあります。
+A complete example is available in [examples/keymap.toml](../examples/keymap.toml).
 
-## 使い方
+## Usage
 
-1. `split-tabs.yazi` で2ペインを表示します。
-2. リンク元にしたいペインをアクティブにします。
-3. ファイルまたはフォルダへカーソルを置きます。明示選択が1件ある場合は、その選択が使われます。
-4. `g` → `l` を押します。
-5. リンク名を入力してEnterを押します。空欄なら元のbasenameを使います。Escなどでキャンセルした場合は作成しません。
+1. Display two panes with split-tabs.yazi.
+2. Activate the pane containing the link source.
+3. Place the cursor on a file or folder. If exactly one item is explicitly selected, that item is used.
+4. Press g then l.
+5. Enter a link name and press Enter. Leave it empty to use the original basename. Press Esc or otherwise cancel to skip link creation.
 
-リンクは反対側ペインの現在ディレクトリに、入力した名前で作られます。空欄の場合は元のbasenameを使います。アクティブペインを切り替えると、sourceとdestinationも反転します。物理的な画面左・右の順序は保証しません。
+The link is created in the other pane's current directory using the entered name. An empty name uses the original basename. Switching the active pane reverses the source and destination. The physical left/right order of panes is not guaranteed.
 
-## 対象の決定と失敗時の動作
+## Target selection and failure behavior
 
-- 明示選択1件を優先し、選択がなければカーソル位置を使います。
-- 明示選択が2件以上、対象がない、2タブでない場合は作成しません。
-- ファイルとフォルダは対象にできます。
-- 壊れたシンボリックリンク、特殊ファイル、アーカイブ内・リモートURLは対象外です。
-- destinationに同名の項目がある場合は上書きせず、リンクコマンドの失敗を通知します。自動改名や既存項目の削除はしません。
-- リンク名は単一のbasenameとして入力します。空欄は元のbasename、パス区切りやWindowsで使用できない文字を含む名前は拒否します。
-- ハードリンク（`mklink /H`）やファイルコピーへのフォールバックは行いません。
-- パスは個別のコマンド引数として渡します。WindowsファイルリンクではScoop `sudo.cmd` の引数変換を経由するため、空白・日本語・括弧を含むパスを実機で確認してください。
+- One explicitly selected item takes priority; otherwise the hovered item is used.
+- Link creation is skipped when more than one item is explicitly selected, no target exists, or the view does not have exactly two tabs.
+- Both files and folders can be linked.
+- Broken symbolic links, special files, archive contents, and remote URLs are rejected.
+- An existing destination item is never overwritten. The link command fails and the user is notified. The plugin does not rename or delete existing items automatically.
+- The link name must be a single basename. An empty name uses the original basename. Path separators and characters that are invalid on Windows are rejected.
+- Hard links (mklink /H) and file-copy fallbacks are not used.
+- Paths are passed as individual command arguments. Windows file links pass through Scoop sudo.cmd argument handling, so paths containing spaces, Japanese characters, or parentheses must be verified on a real machine.
 
-作成成功後はYaziにrefreshを通知します。作成したリンクはsourceのパスを指すため、sourceを移動・削除するとリンク先も利用できなくなります。
+After a successful link operation, the plugin emits a refresh event to Yazi. The created link points to the source path, so moving or deleting the source makes the link unusable.
 
-## 制約と確認
+## Limitations and validation
 
-このプラグインはYaziの公開Lua APIと `split-tabs.yazi` の2タブモデルを使用します。YaziのAPIは変更される可能性があるため、更新後は動作確認してください。
+This plugin uses Yazi's public Lua API and the two-tab model provided by split-tabs.yazi. Yazi's API may change; verify behavior after upgrades.
 
-次の確認はモックテストで行えます。
+The following checks are covered by the mock test:
 
-```bash
+~~~bash
 lua ./tests/test_main.lua
-```
+~~~
 
-モックテストは実Yazi UI、UAC確認、Windowsのリンク作成権限、実ファイルシステム、Git Bash/WSLの環境差を保証しません。
+The mock test does not guarantee behavior in the real Yazi UI, UAC prompts, Windows link-creation permissions, the real filesystem, or Git Bash/WSL environment differences.
