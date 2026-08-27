@@ -7,7 +7,7 @@ pane-link.yazi is a Yazi plugin that creates a link from a file or folder in the
 | Dependency | Requirement |
 | --- | --- |
 | Target environment | Git Bash / WSL / Linux / macOS |
-| Yazi / ya | 26.5.6 or later, using the same version |
+| Yazi / ya | 26.5.6 or later, using the same version; Yazi 26.8.15+ selected `File` entries are resolved through `.url` |
 | terrakok/split-tabs.yazi | Required for the two-pane view |
 | Link command | cmd.exe mklink on Git Bash; ln on Unix-like systems |
 | Windows file links | %USERPROFILE%\scoop\shims\sudo.cmd is required |
@@ -62,7 +62,7 @@ The link is created in the other pane's current directory using the entered name
 
 ## Target selection and failure behavior
 
-- One explicitly selected item takes priority; otherwise the hovered item is used.
+- One explicitly selected item takes priority; its `File.url` is resolved to a URL before validation. Older direct `Url` entries remain compatible; otherwise the hovered item is used.
 - Link creation is skipped when more than one item is explicitly selected, no target exists, or the view does not have exactly two tabs.
 - Both files and folders can be linked.
 - Broken symbolic links, special files, archive contents, and remote URLs are rejected.

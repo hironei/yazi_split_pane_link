@@ -15,7 +15,7 @@ entry runs in an asynchronous context. It uses ya.sync to obtain only the requir
 
 1. Confirm that #cx.tabs == 2.
 2. Treat cx.tabs.idx as the active tab and the other tab as the destination tab.
-3. If the active tab has one selected item, use that URL.
+3. If the active tab has one selected item, resolve its `.url` field and use the resulting URL. Older direct `Url` entries are accepted by the same adapter.
 4. If it has no selected items, use current.hovered.url. More than one selected item is an error.
 5. Obtain the source URL name and the destination tab's current.cwd.
 6. Use ya.input to obtain a link name. Use the source URL name for empty input; otherwise validate the input as a basename and build the destination URL with current.cwd:join(name). Do not create a link after cancellation or invalid input.

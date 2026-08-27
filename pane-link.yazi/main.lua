@@ -45,9 +45,17 @@ local function count_selected(selected)
 	return count
 end
 
+local function resolve_url(entry)
+	if not entry then
+		return nil
+	end
+
+	return entry.url or entry
+end
+
 local function get_single_selected(selected)
-	for _, url in pairs(selected or {}) do
-		return url
+	for _, entry in pairs(selected or {}) do
+		return resolve_url(entry)
 	end
 
 	return nil
