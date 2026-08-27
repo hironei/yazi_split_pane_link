@@ -5,6 +5,7 @@ local emitted = {}
 local launched = {}
 local spawn_result = {}
 local inspect_result = { cha = {}, err = nil }
+local inspected_paths = {}
 local target_os = "linux"
 local sudo_exists = true
 local input_value = ""
@@ -119,6 +120,7 @@ fs = {
 			return { is_dir = false }, nil
 		end
 
+		inspected_paths[#inspected_paths + 1] = tostring(path)
 		return inspect_result.cha, inspect_result.err
 	end,
 }
@@ -161,6 +163,7 @@ local function file(path, opts)
 	opts = opts or {}
 	return {
 		url = url(path, opts),
+		name = opts.wrapper_name,
 		cha = {
 			is_orphan = opts.is_orphan or false,
 			is_block = opts.is_block or false,
@@ -183,6 +186,7 @@ end
 
 local function reset()
 	notifications = {}
+	inspected_paths = {}
 	emitted = {}
 	launched = {}
 	spawn_result = { child = successful_child, err = nil }
@@ -366,6 +370,77 @@ run({
 })
 assert_equal(launched[1].args[2], [[C:/selected/フォルダ]], "selected source path")
 assert_equal(launched[1].args[3], [[/target/フォルダ]], "selected destination path")
+
+-- Yazi 26.8.15 selected entries are File wrappers; resolve their URL before use.
+reset()
+run({
+	tab({ file([[C:/selected/selected file.txt]]) }, file([[C:/hovered.txt]]), "/source"),
+	tab({}, file([[C:/other.txt]]), "/target"),
+})
+assert_equal(launched[1].args[2], [[C:/selected/selected file.txt]], "selected File source path")
+assert_equal(launched[1].args[3], [[/target/selected file.txt]], "selected File destination path")
+assert_equal(inspected_paths[1], [[C:/selected/selected file.txt]], "selected File inspection path")
+
+-- Selected directories use the resolved URL and retain directory-link behavior.
+reset()
+target_os = "windows"
+inspect_result.cha = { is_dir = true }
+run({
+	tab({ file([[C:/selected/selected folder]]) }, file([[C:/hovered.txt]]), "/source"),
+	tab({}, file([[C:/other.txt]]), [[C:/target pane]]),
+})
+assert_equal(launched[1].args[5], [[C:/target pane/selected folder]], "selected directory destination path")
+assert_equal(launched[1].args[6], [[C:/selected/selected folder]], "selected directory source path")
+
+-- Older direct Url entries remain compatible with the selected-item adapter.
+reset()
+run({
+	tab({ url([[C:/selected/legacy.txt]]) }, file([[C:/hovered.txt]]), "/source"),
+	tab({}, file([[C:/other.txt]]), "/target"),
+})
+assert_equal(launched[1].args[2], [[C:/selected/legacy.txt]], "legacy selected Url source path")
+assert_equal(launched[1].args[3], [[/target/legacy.txt]], "legacy selected Url destination path")
+
+-- URL validation applies to the resolved URL rather than the File wrapper.
+reset()
+run({
+	tab({ file([[sftp://server/selected]], { domain = "server" }) }, file([[C:/hovered.txt]]), "/source"),
+	tab({}, file([[C:/other.txt]]), "/target"),
+})
+assert_no_link("local filesystem")
+
+reset()
+run({
+	tab({ file([[C:/selected/archive.zip/entry]], { is_archive = true }) }, file([[C:/hovered.txt]]), "/source"),
+	tab({}, file([[C:/other.txt]]), "/target"),
+})
+assert_no_link("inside archives")
+
+reset()
+run({
+	tab({ file([[C:/selected/no-name]], { name = "", wrapper_name = "wrapper-name" }) }, file([[C:/hovered.txt]]), "/source"),
+	tab({}, file([[C:/other.txt]]), "/target"),
+})
+assert_no_link("Could not determine the link target name")
+
+-- Selected broken and special entries still go through inspect_source validation.
+reset()
+inspect_result.cha = { is_orphan = true }
+run({
+	tab({ file([[C:/selected/broken.link]]) }, file([[C:/hovered.txt]]), "/source"),
+	tab({}, file([[C:/other.txt]]), "/target"),
+})
+assert_no_link("Broken symbolic links")
+assert_equal(inspected_paths[1], [[C:/selected/broken.link]], "selected broken-link inspection path")
+
+reset()
+inspect_result.cha = { is_sock = true }
+run({
+	tab({ file([[C:/selected/socket]]) }, file([[C:/hovered.txt]]), "/source"),
+	tab({}, file([[C:/other.txt]]), "/target"),
+})
+assert_no_link("Only regular files and folders")
+assert_equal(inspected_paths[1], [[C:/selected/socket]], "selected special-file inspection path")
 
 -- The active tab is always the source and the other tab supplies the destination.
 reset()

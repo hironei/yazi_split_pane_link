@@ -8,7 +8,7 @@ Create a symbolic link for the active file or folder in the other pane displayed
 
 - The plugin name is pane-link.yazi.
 - Use the two tabs provided by split-tabs.yazi as the active and other panes.
-- If exactly one item is explicitly selected in the active pane, use that URL; otherwise use the item under the cursor.
+- If exactly one item is explicitly selected in the active pane, resolve its URL and use it; otherwise use the item under the cursor.
 - Accept a link name before execution. An empty input uses the basename of the target URL; a non-empty input uses the entered basename.
 - Support regular files and folders. Create links that refer to the same underlying item; never copy the item.
 - On Linux/WSL/macOS, use ln -s for both files and folders. On Windows, use mklink through %USERPROFILE%\scoop\shims\sudo.cmd for files and mklink /J for folders. Use /J for folders to avoid maintaining a second copy.
@@ -17,7 +17,7 @@ Create a symbolic link for the active file or folder in the other pane displayed
 
 ## Non-functional requirements
 
-- Target Yazi 26.5.6 or later.
+- Target Yazi 26.5.6 or later. Selected entries are normalized through their `.url` field for Yazi 26.8.15+, while older direct `Url` entries remain supported.
 - On Git Bash, use Windows mklink and Scoop sudo.cmd only for file links. On WSL/Linux/macOS, use ln -s.
 - Preserve argument boundaries for paths containing spaces, Japanese characters, parentheses, or other special characters.
 - Do not overwrite an existing destination item.
