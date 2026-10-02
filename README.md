@@ -1,5 +1,22 @@
 # Yazi Split Pane Link Plugin
 
+> **This repository has moved.** `pane-link.yazi` is now maintained in [hironei/yazi_plugins](https://github.com/hironei/yazi_plugins), at [`pane-link.yazi`](https://github.com/hironei/yazi_plugins/tree/main/pane-link.yazi). New development happens there.
+>
+> Install the plugin from its new location:
+>
+> ```bash
+> ya pkg add hironei/yazi_plugins:pane-link
+> ```
+>
+> If you installed from this repository, replace the old package:
+>
+> ```bash
+> ya pkg delete hironei/yazi_split_pane_link:pane-link
+> ya pkg add hironei/yazi_plugins:pane-link
+> ```
+>
+> Your keymap does not need to change.
+
 pane-link.yazi is a Yazi plugin that creates a link to the active file or folder in the other pane displayed by terrakok/split-tabs.yazi. It does not copy data: both panes refer to the same underlying item, so edits made from either pane are visible from the other.
 
 ## Installation
